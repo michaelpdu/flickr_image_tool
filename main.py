@@ -52,8 +52,8 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Command Usages')
-    parser.add_argument("-t", "--tags", type=str, default='chinese,girl', help="")
-    parser.add_argument("-c", "--count", type=int, default=100, help="count of download images")
-    parser.add_argument("-b", "--batch_size", type=int, default=500, help="batch size")
+    parser.add_argument("-t", "--tags", type=str, help="tags used in flickr search, such as, 'chinese,girl'")
+    parser.add_argument("-c", "--count", type=int, default=500, help="count of download images, default is 1000")
+    parser.add_argument("-b", "--batch_size", type=int, default=100, help="batch size, default is 500")
     args = parser.parse_args()
     main(args)
