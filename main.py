@@ -56,4 +56,8 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--count", type=int, default=500, help="count of download images, default is 1000")
     parser.add_argument("-b", "--batch_size", type=int, default=100, help="batch size, default is 500")
     args = parser.parse_args()
-    main(args)
+
+    if args.tags:
+        main(args)
+    else:
+        parser.print_help()
