@@ -2,10 +2,11 @@ import os
 import json
 import math
 import argparse
+from PIL import Image
 from datetime import date
 from icrawler import ImageDownloader
 from icrawler.builtin import FlickrImageCrawler
-from face_helper import find_face
+from face_helper import find_faces
 
 ROOT_DIR = 'flickr_image_dir'
 SUB_DIR = ''
@@ -29,7 +30,8 @@ class FaceImageDownloader(ImageDownloader):
         subdir = get_sub_dir()
         image_path = os.path.join(subdir, task['filename'])
         # task.img_size
-        face_list = find_face(image_path)
+        im = Image.open(image_path)
+        face_list = find_faces(im)
         if len(face_list) == 0:
             os.remove(image_path)
 
