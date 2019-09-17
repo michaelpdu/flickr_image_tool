@@ -30,9 +30,10 @@ def remove_duplicates(input_dir):
         for name in files:
             img_path = os.path.join(root, name)
             sha1 = get_digest(img_path)
-            if sha1 in sha1list:
+            if not sha1 in sha1list:
                 sha1list.append(sha1)
             else:
+                print('Remove duplicated image,', img_path)
                 os.remove(img_path)
 
 if __name__ == '__main__':
