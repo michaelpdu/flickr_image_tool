@@ -1,11 +1,13 @@
 import face_recognition
-from PIL import Image
+from PIL import Image, ImageDraw
+import numpy as np
 import os
 import argparse
+import multiprocessing
 
-def find_face(image_path):
+def find_faces(im, threshold=120):
     ret_list = []
-    image = face_recognition.load_image_file(image_path)
+    image = np.array(im.convert('RGB'))
     # (top, right, bottom, left)
     face_locations = face_recognition.face_locations(image)
     # print(face_locations)
@@ -14,64 +16,125 @@ def find_face(image_path):
         height = bottom-top
         # print('width: ', width, ', height: ', height)
         # minimum size
-        if width < 120 or height < 120:
+        if width < threshold or height < threshold:
             continue
         ret_list.append((top, right, bottom, left))
     return ret_list
 
-#
-# 从图像中截取640*640，包含人脸的图像
-#
-def crop_square_by_face(image_path, output_dir):
+def adjust_cropped_locations(width, height, locations):
+    cropped_locations = []
+    for (top, right, bottom, left) in locations:
+        #
+        face_height = bottom - top
+        face_width = right - left
+        print('[MD] face_height:', face_height, ', face_width:', face_width)
+        #
+        new_top = top - face_height
+        top = new_top if new_top > 0 else 0
+
+        new_bottom = bottom + face_height
+        bottom = new_bottom if new_bottom < height else height
+
+        new_left = left - face_width
+        left = new_left if new_left > 0 else 0
+
+        new_right = right + face_width
+        right = new_right if new_right < width else width
+
+        #
+        face_height = bottom - top
+        face_width = right - left
+        print('[new] face_height:', face_height, ', face_width:', face_width)
+
+        # 
+        # adjust image location
+        if face_height > face_width:
+            gap = face_height - face_width
+            if top == 0:
+                bottom = bottom-gap
+            elif bottom == height:
+                top = top+gap
+            else:
+                bottom = bottom-int(gap/2)
+                top = top+int(gap/2)
+        else:
+            gap = face_width - face_height
+            if left == 0:
+                right = right-gap
+            elif right == width:
+                left = left+gap
+            else:
+                right = right-int(gap/2)
+                left = left+int(gap/2)
+
+        #
+        face_height = bottom - top
+        face_width = right - left
+        print('[adjusted] face_height:', face_height, ', face_width:', face_width)
+
+        #
+        cropped_locations.append((top, right, bottom, left))
+    return cropped_locations
+
+def draw_image_with_face_rectangle(image_path, locations):
+    im = Image.open(image_path)
+    width, height = im.size
+    locations = adjust_cropped_locations(width, height, locations)
+    draw = ImageDraw.Draw(im)
+    for (top, right, bottom, left) in locations:
+        #
+        draw.line((right, top, right, bottom), fill=128, width=10)
+        draw.line((left, top, right, top), fill=128, width=10)
+        draw.line((left, top, left, bottom), fill=128, width=10)
+        draw.line((left, bottom, right, bottom), fill=128, width=10)
+    im.show()
+
+# 从图像中截取1024x1024的区域，包含人脸的图像
+def crop_square_by_face(image_path, output_dir, size=1024):
     #
-    _, filename = os.path.split(image_path)
+    dir_path, filename = os.path.split(image_path)
     filename_wo_ext, ext = os.path.splitext(filename)
+    _, dir_name = os.path.split(dir_path)
+    output_subdir = os.path.join(output_dir, dir_name)
+    if not os.path.exists(output_subdir):
+        os.makedirs(output_subdir)
     #
     im = Image.open(image_path)
     width, height = im.size
     print('[MD] width:', width, ', height:', height)
 
-    face_locations = find_face(image_path)
+    face_locations = find_faces(im)
+    if len(face_locations) > 2:
+        print('[MD] more than 2 face locations in the image,', image_path)
+        return
+
+    cropped_locations = adjust_cropped_locations(width, height, face_locations)
+
     index = 1
-    for (top, right, bottom, left) in face_locations:
-        face_width = right-left
-        face_height = bottom-top
+    for (top, right, bottom, left) in cropped_locations:
+        cropped_width = right-left
+        cropped_height = bottom-top
+        if cropped_width < size or cropped_height < size:
+            print('[MD] cropped image size <', size, ',', image_path)
+            continue
+        
+        cropped_path = os.path.join(output_dir, dir_name, '{}_{}{}'.format(filename_wo_ext, index, ext))
+        im.crop((left, top, right, bottom)).resize((size,size)).save(cropped_path)
 
-        print('[MD] top:', top, ', right:', right, ', bottom:', bottom, ', left:', left)
-        print('[MD] face_width:', face_width, ', face_height:', face_height)
-        # 3*face_height<640 or 3*face_width<640
-
-        cropped_path = os.path.join(output_dir, '{}_{}{}'.format(filename_wo_ext, index, ext))
-
-        if 3*face_height < 640 or 3*face_width<640:
-            print('[MD] {}, small than 640'.format(image_path))
-        else:
-            if top>face_height and bottom+face_height<height \
-                and left>face_width and right+face_width<width:
-                print('[MD] Save cropped image:', cropped_path)
-                # left, top, right, bottom
-                im.crop((left-face_width, top-face_height, right+face_width,    \
-                    bottom+face_height)).resize((640,640)).save(cropped_path)
-            elif height > 3*face_height*0.9 and width > 4*face_width*0.9 \
-                and left>face_width and width-right>face_width:
-                print('[MD] larger than 0.9')
-                if top>0.6*face_height and (height-bottom)>1.2*face_height:
-                    print('[MD] Save cropped image:', cropped_path)
-                    # left, top, right, bottom
-                    im.crop((left-face_width, 0, right+face_width,    \
-                    3*face_height)).resize((640,640)).save(cropped_path)
-                else:
-                    print('[MD] yyy')
-            else:
-                print('[MD] {}, not in the middle area of cropped image'.format(image_path))
         index += 1
 
+def process_image_list(image_list, output_dir):
+    for image_path in image_list:
+        crop_square_by_face(image_path, output_dir)
+
 def batch_crop_images(image_path, output_dir):
+    image_path_list = []
     for root, _, files in os.walk(image_path):
         for name in files:
-            crop_square_by_face(os.path.join(root, name), output_dir)
+            image_path_list.append(os.path.join(root, name))
+    process_image_list(image_path_list, output_dir)
 
-def crop_image(image_path, output_dir):
+def crop_images(image_path, output_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     if os.path.isfile(image_path):
@@ -81,31 +144,81 @@ def crop_image(image_path, output_dir):
     else:
         pass
 
-#
+def start_multi_processes(image_path, output_dir, cpu_count):
+    image_list_group = []
+    for _ in range(0, cpu_count):
+        image_list_group.append([])
+    index = 0
+    for root, _, files in os.walk(image_path):
+        for name in files:
+            image_list_group[index%cpu_count].append(os.path.join(root, name))
+            index += 1
+    
+    jobs = []
+    for i in range(0, cpu_count):
+        print('index:',i,', length:',len(image_list_group[i]))
+        p = multiprocessing.Process(target=process_image_list, args=(image_list_group[i],output_dir,))
+        jobs.append(p)
+        p.start()
+
+def crop_images_multi_process(image_path, output_dir):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    if os.path.isfile(image_path):
+        crop_square_by_face(image_path, output_dir)
+    elif os.path.isdir(image_path):
+        batch_crop_images(image_path, output_dir)
+    else:
+        pass
 # 
-def remove_multi_faces_image(image_path):
-    if len(find_face(image_path)) > 1:
-        print('[MD] Multi faces in image, ', image_path)
+def print_multi_faces_image(image_path):
+    im = Image.open(image_path)
+    count = len(find_faces(im, 1))
+    if count > 2:
+        print('[MD] more than 2 faces in', image_path)
 
-def face_pose(image_path):
-    pass
+def check_face_count_in_image(image_dir):
+    for root, _, files in os.walk(image_dir):
+        for name in files:
+            image_path = os.path.join(root, name)
+            print('[MD] process', image_path)
+            print_multi_faces_image(image_path)
 
-def black_white_images(image_path):
-    pass
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Command Usages')
     parser.add_argument("-i", "--input", type=str, help="input")
     parser.add_argument("-o", "--output", type=str, default="output_dir", help="output")
-    parser.add_argument("-l", "--locations", action="store_true", help="print face locations")
-    parser.add_argument("-c", "--crop", action="store_true", help="crop ")
+    parser.add_argument("-d", "--draw", action="store_true", help="draw face rectangle in image")
+    parser.add_argument("-c", "--crop", action="store_true", help="crop face areas")
+    parser.add_argument("-p", "--cpu_count", type=int, default=0, \
+        help="cpu count for multiprocessing, default value is 0, which means all of cpu would be used")
+    parser.add_argument("-m", "--multi", action="store_true", help="print multiple faces in image")
     args = parser.parse_args()
 
-    if args.input:
-        if args.locations:
-            locations = find_face(args.input)
-            print(locations)
+    global_cpu_count = multiprocessing.cpu_count()
+
+    if args.input and os.path.exists(args.input):
+        if args.draw:
+            im = Image.open(args.input)
+            locations = find_faces(im)
+            draw_image_with_face_rectangle(args.input, locations)
         elif args.crop:
-            crop_image(args.input, args.output)
+            if args.cpu_count >= 0:
+                if args.cpu_count == 0:
+                    cpu_count = global_cpu_count
+                elif args.cpu_count <= global_cpu_count:
+                    cpu_count = args.cpu_count
+                else:
+                    cpu_count = global_cpu_count
+                print('[MD] start multiprocessing to crop images, process count =', cpu_count)
+                start_multi_processes(args.input, args.output, cpu_count)
+            else:
+                print('[MD] crop images in single process.')
+                # crop_images(args.input, args.output)
+        elif args.multi:
+            check_face_count_in_image(args.input)
+        else:
+            pass
     else:
         parser.print_help()
