@@ -146,6 +146,10 @@ def crop_images(image_path, output_dir):
         pass
 
 def start_multi_processes(image_path, output_dir, cpu_count):
+    #
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    #
     image_list_group = []
     for _ in range(0, cpu_count):
         image_list_group.append([])
