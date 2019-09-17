@@ -105,8 +105,8 @@ def crop_square_by_face(image_path, output_dir, size=1024):
     print('[MD] width:', width, ', height:', height)
 
     face_locations = find_faces(im)
-    if len(face_locations) > 2:
-        print('[MD] more than 2 face locations in the image,', image_path)
+    if len(face_locations) > 1:
+        print('[MD] more than 1 face locations in the image,', image_path)
         return
 
     cropped_locations = adjust_cropped_locations(width, height, face_locations)
@@ -179,8 +179,8 @@ def crop_images_multi_process(image_path, output_dir):
 def print_multi_faces_image(image_path):
     im = Image.open(image_path)
     count = len(find_faces(im, 1))
-    if count > 2:
-        print('[MD] more than 2 faces in', image_path)
+    if count > 1:
+        print('[MD] more than 1 faces in', image_path)
 
 def check_face_count_in_image(image_dir):
     for root, _, files in os.walk(image_dir):
