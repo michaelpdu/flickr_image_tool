@@ -174,9 +174,9 @@ def start_multi_processes(image_path, list_file_path, output_dir, cpu_count):
     jobs = []
     for i in range(0, cpu_count):
         print('[MD] index:',i,', length:',len(image_list_group[i]))
-        # p = multiprocessing.Process(target=process_image_list, args=(image_list_group[i],output_dir,))
-        # jobs.append(p)
-        # p.start()
+        p = multiprocessing.Process(target=process_image_list, args=(image_list_group[i],output_dir,))
+        jobs.append(p)
+        p.start()
 
 def crop_images_multi_process(image_path, output_dir):
     if not os.path.exists(output_dir):
