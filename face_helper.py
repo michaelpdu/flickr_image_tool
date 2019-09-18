@@ -6,6 +6,8 @@ import os
 import argparse
 import multiprocessing
 
+SUPPORTED_IMAGE_EXT = ['.jpg', '.png']
+
 def find_faces(im, threshold=120):
     ret_list = []
     image = np.array(im.convert('RGB'))
@@ -168,6 +170,9 @@ def start_multi_processes(image_path, list_file_path, output_dir, cpu_count):
     count_in_accomplished_list = 0
     for root, _, files in os.walk(image_path):
         for name in files:
+            _, ext = os.path.splitext(name)
+            if not ext.lower() in SUPPORTED_IMAGE_EXT:
+                continue
             image_file_path = os.path.join(root, name)
             if image_file_path in accomplished_file_list:
                 # print('[MD] find in accomplished_file_list,', image_file_path)
