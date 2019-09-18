@@ -28,7 +28,7 @@ def adjust_cropped_locations(width, height, locations):
         #
         face_height = bottom - top
         face_width = right - left
-        print('[MD] face_height:', face_height, ', face_width:', face_width)
+        # print('[MD] face_height:', face_height, ', face_width:', face_width)
         #
         new_top = top - face_height
         top = new_top if new_top > 0 else 0
@@ -45,7 +45,7 @@ def adjust_cropped_locations(width, height, locations):
         #
         face_height = bottom - top
         face_width = right - left
-        print('[new] face_height:', face_height, ', face_width:', face_width)
+        # print('[new] face_height:', face_height, ', face_width:', face_width)
 
         # 
         # adjust image location
@@ -71,7 +71,7 @@ def adjust_cropped_locations(width, height, locations):
         #
         face_height = bottom - top
         face_width = right - left
-        print('[adjusted] face_height:', face_height, ', face_width:', face_width)
+        # print('[adjusted] face_height:', face_height, ', face_width:', face_width)
 
         #
         cropped_locations.append((top, right, bottom, left))
@@ -102,7 +102,7 @@ def crop_square_by_face(image_path, output_dir, size=1024):
     #
     im = Image.open(image_path)
     width, height = im.size
-    print('[MD] width:', width, ', height:', height)
+    # print('[MD] width:', width, ', height:', height)
 
     face_locations = find_faces(im)
     if len(face_locations) > 1:
@@ -145,10 +145,18 @@ def crop_images(image_path, output_dir):
     else:
         pass
 
-def start_multi_processes(image_path, output_dir, cpu_count):
+def start_multi_processes(image_path, list_file_path, output_dir, cpu_count):
     #
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    #
+    accomplished_file_list = []
+    # print(list_file_path)
+    if list_file_path and os.path.exists(list_file_path) and os.path.isfile(list_file_path):
+        with open(list_file_path, 'r') as fh:
+            for line in fh.readlines():
+                accomplished_file_list.append(line.strip())
+    # print('accomplished_file_list:', accomplished_file_list)
     #
     image_list_group = []
     for _ in range(0, cpu_count):
@@ -156,15 +164,19 @@ def start_multi_processes(image_path, output_dir, cpu_count):
     index = 0
     for root, _, files in os.walk(image_path):
         for name in files:
-            image_list_group[index%cpu_count].append(os.path.join(root, name))
+            image_file_path = os.path.join(root, name)
+            if image_file_path in accomplished_file_list:
+                print('[MD] find in accomplished_file_list,', image_file_path)
+                continue
+            image_list_group[index%cpu_count].append(image_file_path)
             index += 1
     
     jobs = []
     for i in range(0, cpu_count):
-        print('index:',i,', length:',len(image_list_group[i]))
-        p = multiprocessing.Process(target=process_image_list, args=(image_list_group[i],output_dir,))
-        jobs.append(p)
-        p.start()
+        print('[MD] index:',i,', length:',len(image_list_group[i]))
+        # p = multiprocessing.Process(target=process_image_list, args=(image_list_group[i],output_dir,))
+        # jobs.append(p)
+        # p.start()
 
 def crop_images_multi_process(image_path, output_dir):
     if not os.path.exists(output_dir):
@@ -199,6 +211,7 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--cpu_count", type=int, default=0, \
         help="cpu count for multiprocessing, default value is 0, which means all of cpu would be used")
     parser.add_argument("-m", "--multi", action="store_true", help="print multiple faces in image")
+    parser.add_argument("-l", "--list_file", type=str, help="list file contains accomplished files")
     args = parser.parse_args()
 
     global_cpu_count = multiprocessing.cpu_count()
@@ -217,7 +230,7 @@ if __name__ == '__main__':
                 else:
                     cpu_count = global_cpu_count
                 print('[MD] start multiprocessing to crop images, process count =', cpu_count)
-                start_multi_processes(args.input, args.output, cpu_count)
+                start_multi_processes(args.input, args.list_file, args.output, cpu_count)
             else:
                 print('[MD] crop images in single process.')
                 # crop_images(args.input, args.output)
