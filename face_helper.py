@@ -165,15 +165,17 @@ def start_multi_processes(image_path, list_file_path, output_dir, cpu_count):
     for _ in range(0, cpu_count):
         image_list_group.append([])
     index = 0
+    count_in_accomplished_list = 0
     for root, _, files in os.walk(image_path):
         for name in files:
             image_file_path = os.path.join(root, name)
             if image_file_path in accomplished_file_list:
-                print('[MD] find in accomplished_file_list,', image_file_path)
+                # print('[MD] find in accomplished_file_list,', image_file_path)
+                count_in_accomplished_list += 1
                 continue
             image_list_group[index%cpu_count].append(image_file_path)
             index += 1
-    
+    print('[MD] find {} in accomplished file list'.format(count_in_accomplished_list))
     jobs = []
     for i in range(0, cpu_count):
         print('[MD] index:',i,', length:',len(image_list_group[i]))
