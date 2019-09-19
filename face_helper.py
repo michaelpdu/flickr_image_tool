@@ -127,11 +127,14 @@ def crop_square_by_face(image_path, output_dir, size=1024):
         index += 1
 
 def process_image_list(image_list, output_dir):
+    index = 0
     for image_path in image_list:
         try:
+            index += 1
             crop_square_by_face(image_path, output_dir)
         except Exception as _:
             print("[MD] exception in process:", image_path)
+    print("[MD] process_image_list done! image_list length:", len(image_list), ', index:', index)
 
 def batch_crop_images(image_path, output_dir):
     image_path_list = []
