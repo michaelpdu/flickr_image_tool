@@ -5,19 +5,27 @@ import numpy as np
 import os
 import argparse
 import multiprocessing
+import logging
 
 SUPPORTED_IMAGE_EXT = ['.jpg', '.png']
+
+def is_image_file(filename):
+    _, ext = os.path.splitext(filename)
+    if not ext.lower() in SUPPORTED_IMAGE_EXT:
+        return False
+    else:
+        return True
 
 def find_faces(im, threshold=120):
     ret_list = []
     image = np.array(im.convert('RGB'))
     # (top, right, bottom, left)
     face_locations = face_recognition.face_locations(image)
-    # print(face_locations)
+    logging.debug('face locations: {}'.format(face_locations))
     for (top, right, bottom, left) in face_locations:
         width = right-left
         height = bottom-top
-        # print('width: ', width, ', height: ', height)
+        logging.debug('width: {}, height: {}'.format(width, height))
         # minimum size
         if width < threshold or height < threshold:
             continue
@@ -30,7 +38,7 @@ def adjust_cropped_locations(width, height, locations):
         #
         face_height = bottom - top
         face_width = right - left
-        # print('[MD] face_height:', face_height, ', face_width:', face_width)
+        logging.debug('face_height: {}, face_width: {}'.format(face_height, face_width))
         #
         new_top = top - face_height
         top = new_top if new_top > 0 else 0
@@ -47,7 +55,7 @@ def adjust_cropped_locations(width, height, locations):
         #
         face_height = bottom - top
         face_width = right - left
-        # print('[new] face_height:', face_height, ', face_width:', face_width)
+        logging.debug('[new] face_height: {}, face_width: {}'.format(face_height, face_width))
 
         # 
         # adjust image location
@@ -73,7 +81,7 @@ def adjust_cropped_locations(width, height, locations):
         #
         face_height = bottom - top
         face_width = right - left
-        # print('[adjusted] face_height:', face_height, ', face_width:', face_width)
+        logging.debug('[adjusted] face_height: {}, face_width: {}'.format(face_height, face_width))
 
         #
         cropped_locations.append((top, right, bottom, left))
@@ -104,11 +112,11 @@ def crop_square_by_face(image_path, output_dir, size=1024):
     #
     im = Image.open(image_path)
     width, height = im.size
-    # print('[MD] width:', width, ', height:', height)
+    logging.debug('width: {}, height: {}'.format(width, height))
 
     face_locations = find_faces(im)
     if len(face_locations) > 1:
-        print('[MD] more than 1 face locations in the image,', image_path)
+        logging.info('more than 1 face locations in the image, {}'.format(image_path))
         return
 
     cropped_locations = adjust_cropped_locations(width, height, face_locations)
@@ -118,7 +126,7 @@ def crop_square_by_face(image_path, output_dir, size=1024):
         cropped_width = right-left
         cropped_height = bottom-top
         if cropped_width < size or cropped_height < size:
-            print('[MD] cropped image size <', size, ',', image_path)
+            logging.info('cropped image size < {}, {}'.format(size, image_path))
             continue
         
         cropped_path = os.path.join(output_dir, dir_name, '{}_{}{}'.format(filename_wo_ext, index, ext))
@@ -126,7 +134,7 @@ def crop_square_by_face(image_path, output_dir, size=1024):
 
         index += 1
 
-def process_image_list(image_list, output_dir):
+def process_image_list(cpu_index, image_list, output_dir):
     index = 0
     last_image = ''
     for image_path in image_list:
@@ -135,9 +143,8 @@ def process_image_list(image_list, output_dir):
             last_image = image_path
             crop_square_by_face(image_path, output_dir)
         except Exception as _:
-            print("[MD] exception in process:", image_path)
-    print("[MD] process_image_list done! image_list length:", len(image_list), \
-        ', index:', index, ', last_image:', last_image)
+            logging.warn("exception in CPU {} when process: {}".format(cpu_index, image_path))
+    logging.info("process_image_list done! CPU: {}, image_list length: {}, index: {}, last_image: {}".format(cpu_index, len(image_list), index, last_image))
 
 def batch_crop_images(image_path, output_dir):
     image_path_list = []
@@ -162,12 +169,10 @@ def start_multi_processes(image_path, list_file_path, output_dir, cpu_count):
         os.makedirs(output_dir)
     #
     accomplished_file_list = []
-    # print(list_file_path)
     if list_file_path and os.path.exists(list_file_path) and os.path.isfile(list_file_path):
         with open(list_file_path, 'r') as fh:
             for line in fh.readlines():
                 accomplished_file_list.append(line.strip())
-    # print('accomplished_file_list:', accomplished_file_list)
     #
     image_list_group = []
     for _ in range(0, cpu_count):
@@ -176,21 +181,20 @@ def start_multi_processes(image_path, list_file_path, output_dir, cpu_count):
     count_in_accomplished_list = 0
     for root, _, files in os.walk(image_path):
         for name in files:
-            _, ext = os.path.splitext(name)
-            if not ext.lower() in SUPPORTED_IMAGE_EXT:
+            if not is_image_file(name):
                 continue
             image_file_path = os.path.join(root, name)
             if image_file_path in accomplished_file_list:
-                # print('[MD] find in accomplished_file_list,', image_file_path)
+                logging.debug('find in accomplished_file_list, {}'.format(image_file_path))
                 count_in_accomplished_list += 1
                 continue
             image_list_group[index%cpu_count].append(image_file_path)
             index += 1
-    print('[MD] find {} in accomplished file list'.format(count_in_accomplished_list))
+    logging.info('find {} in accomplished file list'.format(count_in_accomplished_list))
     jobs = []
     for i in range(0, cpu_count):
-        print('[MD] index:',i,', length:',len(image_list_group[i]))
-        p = multiprocessing.Process(target=process_image_list, args=(image_list_group[i],output_dir,))
+        logging.info('index: {}, length: {}'.format(i, len(image_list_group[i])))
+        p = multiprocessing.Process(target=process_image_list, args=(i,image_list_group[i],output_dir,))
         jobs.append(p)
         p.start()
     for p in jobs:
@@ -211,13 +215,15 @@ def print_multi_faces_image(image_path):
     im = Image.open(image_path)
     count = len(find_faces(im, 1))
     if count > 1:
-        print('[MD] more than 1 faces in', image_path)
+        logging.info('more than 1 faces in {}'.format(image_path))
 
 def check_face_count_in_image(image_dir):
     for root, _, files in os.walk(image_dir):
         for name in files:
+            if not is_image_file(name):
+                continue
             image_path = os.path.join(root, name)
-            print('[MD] process', image_path)
+            logging.debug('process {}'.format(image_path))
             print_multi_faces_image(image_path)
 
 
@@ -234,6 +240,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     global_cpu_count = multiprocessing.cpu_count()
+    logging.basicConfig(filename='face_helper.log', level=logging.INFO, 
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     if args.input and os.path.exists(args.input):
         if args.draw:
@@ -248,10 +256,10 @@ if __name__ == '__main__':
                     cpu_count = args.cpu_count
                 else:
                     cpu_count = global_cpu_count
-                print('[MD] start multiprocessing to crop images, process count =', cpu_count)
+                logging.info('start multiprocessing to crop images, process count = {}'.format(cpu_count))
                 start_multi_processes(args.input, args.list_file, args.output, cpu_count)
             else:
-                print('[MD] crop images in single process.')
+                logging.info('crop images in single process.')
                 # crop_images(args.input, args.output)
         elif args.multi:
             check_face_count_in_image(args.input)
